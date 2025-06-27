@@ -3,92 +3,126 @@
 import { useState } from "react"
 import { useChat } from "@ai-sdk/react"
 import { SidebarProvider } from "@/components/ui/sidebar"
-import { IoTSidebar } from "@/components/iot-sidebar"
 import { ChatInterface } from "@/components/chat-interface"
-import { DataVisualization } from "@/components/data-visualization"
-import { AgentSelector } from "@/components/agent-selector"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Send, Bot, Search } from "lucide-react"
 
 export default function IoTChatDashboard() {
-  const [selectedDataSource, setSelectedDataSource] = useState("temperature-sensors")
-  const [selectedAgent, setSelectedAgent] = useState("data-analyst")
-  const [visualizations, setVisualizations] = useState<any[]>([])
+  const [isSensorChecking, setIsSensorChecking] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     api: "/api/chat",
     body: {
-      dataSource: selectedDataSource,
-      agent: selectedAgent,
-    },
-    onFinish: (message) => {
-      // Parse any visualization requests from the AI response
-      if (message.content.includes("[VISUALIZATION]")) {
-        const vizData = extractVisualizationData(message.content)
-        if (vizData) {
-          setVisualizations((prev) => [...prev, vizData])
-        }
-      }
-    },
+      dataSource: "all-sensors",
+      agent: "data-analyst",
+    }
   })
 
-  const extractVisualizationData = (content: string) => {
-    // Extract visualization data from AI response
-    const vizMatch = content.match(/\[VISUALIZATION\](.*?)\[\/VISUALIZATION\]/s)
-    if (vizMatch) {
-      try {
-        return JSON.parse(vizMatch[1])
-      } catch (e) {
-        return null
-      }
-    }
-    return null
+  const handleSensorCheck = () => {
+    setIsSensorChecking(true)
+    const inputEvent = { target: { value: "Check the status of all connected sensors and report any issues." } } as React.ChangeEvent<HTMLInputElement>
+    const submitEvent = { preventDefault: () => {} } as React.FormEvent<HTMLFormElement>
+    
+    handleInputChange(inputEvent)
+    setTimeout(() => {
+      handleSubmit(submitEvent)
+      setTimeout(() => setIsSensorChecking(false), 2000)
+    }, 100)
+  }
+
+  const handleFocus = () => {
+    setIsExpanded(true)
   }
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-        <IoTSidebar selectedDataSource={selectedDataSource} onDataSourceChange={setSelectedDataSource} />
+    <SidebarProvider defaultOpen={false}>
+      <main className="min-h-screen w-screen bg-white text-slate-900 flex items-center justify-center">
+        <div className={`w-full ${isExpanded ? 'h-screen pt-8' : 'h-screen'} flex flex-col items-center justify-center transition-all duration-300`}>
+          {/* Logo Area */}
+          <div className={`flex items-center gap-3 mb-8 ${isExpanded ? 'transform -translate-y-20' : ''} transition-all duration-300`}>
+            <Bot className="w-12 h-12 text-blue-500" />
+            <h1 className="text-3xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
+              IoTr
+            </h1>
+          </div>
 
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">IoT Intelligence Hub</h1>
-                <p className="text-slate-600 dark:text-slate-400">Chat with your sensor data using AI agents</p>
-              </div>
-              <AgentSelector selectedAgent={selectedAgent} onAgentChange={setSelectedAgent} />
+          {/* Search Area */}
+          <div className="w-full max-w-[800px] px-6">
+            <div className="relative flex flex-col items-center">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSubmit(e)
+                  setIsExpanded(true)
+                }}
+                className="relative w-full"
+              >
+                <Input
+                  value={input}
+                  onChange={handleInputChange}
+                  onFocus={handleFocus}
+                  placeholder="Ask about your IoT sensors..."
+                  className="w-full h-14 pl-14 pr-14 rounded-full border-2 border-slate-200 hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 shadow-sm hover:shadow-md transition-all text-lg"
+                />
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-slate-400" />
+                <Button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-10 px-4 rounded-full bg-transparent hover:bg-slate-100 text-blue-500"
+                >
+                  <Send className="h-5 w-5" />
+                </Button>
+              </form>
+
+              {/* Sensor Check Button */}
+              <Button
+                onClick={handleSensorCheck}
+                disabled={isSensorChecking || isLoading}
+                className={`
+                  mt-6
+                  px-8 py-2.5
+                  rounded-full 
+                  font-medium
+                  text-base
+                  transition-all
+                  duration-300
+                  ${isSensorChecking || isLoading
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }
+                `}
+              >
+                {isSensorChecking ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                    Checking Sensors...
+                  </div>
+                ) : (
+                  'Check Sensors'
+                )}
+              </Button>
             </div>
           </div>
 
-          <div className="flex-1 flex overflow-hidden">
-            {/* Chat Interface */}
-            <div className="flex-1 flex flex-col">
-              <ChatInterface
-                messages={messages}
-                input={input}
-                handleInputChange={handleInputChange}
-                handleSubmit={handleSubmit}
-                isLoading={isLoading}
-                selectedDataSource={selectedDataSource}
-              />
-            </div>
-
-            {/* Dynamic Visualizations */}
-            {visualizations.length > 0 && (
-              <div className="w-1/2 border-l bg-white dark:bg-slate-900 overflow-y-auto">
-                <div className="p-4 border-b">
-                  <h3 className="font-semibold text-slate-900 dark:text-slate-100">Generated Insights</h3>
-                </div>
-                <div className="p-4 space-y-4">
-                  {visualizations.map((viz, index) => (
-                    <DataVisualization key={index} data={viz} />
-                  ))}
-                </div>
+          {/* Messages Area */}
+          {(messages.length > 0 || isLoading) && (
+            <div className={`w-full max-w-[800px] px-6 mt-8 transition-all duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
+                <ChatInterface
+                  messages={messages}
+                  input={input}
+                  handleInputChange={handleInputChange}
+                  handleSubmit={handleSubmit}
+                  isLoading={isLoading}
+                  selectedDataSource="all-sensors"
+                />
               </div>
-            )}
-          </div>
-        </main>
-      </div>
+            </div>
+          )}
+        </div>
+      </main>
     </SidebarProvider>
   )
 }
