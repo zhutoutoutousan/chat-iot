@@ -1,13 +1,20 @@
 "use client"
 
 import type React from "react"
-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Send, Bot, User, Sparkles } from "lucide-react"
-import type { Message } from "ai"
+import { SensorConfig, SensorData } from "@/lib/sensors"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 interface ChatInterfaceProps {
   messages: Message[]
@@ -16,6 +23,8 @@ interface ChatInterfaceProps {
   handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   isLoading: boolean
   selectedDataSource: string
+  sensorConfigs?: SensorConfig[]
+  currentSensorData?: { [sensorId: string]: SensorData[] }
 }
 
 export function ChatInterface({
@@ -25,14 +34,25 @@ export function ChatInterface({
   handleSubmit,
   isLoading,
   selectedDataSource,
+  sensorConfigs = [],
+  currentSensorData = {}
 }: ChatInterfaceProps) {
-  const suggestedQueries = [
-    "Show me temperature trends for the last 24 hours",
-    "Which sensors are showing anomalies?",
-    "Compare power consumption across buildings",
-    "Generate a predictive maintenance report",
-    "What's the correlation between humidity and temperature?",
-  ]
+  // Generate suggested queries based on available sensors
+  const suggestedQueries = sensorConfigs.length > 0 
+    ? [
+        ...sensorConfigs.map(sensor => `What's the current ${sensor.name}?`),
+        "Show me temperature trends for the last 24 hours",
+        "Which sensors are showing anomalies?",
+        "Compare measurements across all sensors",
+        "What's the correlation between different measurements?",
+      ]
+    : [
+        "Show me temperature trends for the last 24 hours",
+        "Which sensors are showing anomalies?",
+        "Compare power consumption across buildings",
+        "Generate a predictive maintenance report",
+        "What's the correlation between humidity and temperature?",
+      ];
 
   return (
     <div className="flex flex-col h-full">
@@ -81,19 +101,37 @@ export function ChatInterface({
 
               <div
                 className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                  message.role === "user" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 border shadow-sm"
+                  message.role === "user" 
+                    ? "bg-blue-600 text-white" 
+                    : "bg-white dark:bg-slate-800 border shadow-sm prose dark:prose-invert prose-sm max-w-none"
                 }`}
               >
-                {message.parts.map((part, i) => {
-                  if (part.type === "text") {
-                    return (
-                      <div key={i} className="whitespace-pre-wrap">
-                        {part.text.replace(/\[VISUALIZATION\].*?\[\/VISUALIZATION\]/gs, "")}
-                      </div>
-                    )
-                  }
-                  return null
-                })}
+                {message.role === "user" ? (
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                      ul: ({node, ...props}) => <ul className="mb-2 list-disc pl-4" {...props} />,
+                      ol: ({node, ...props}) => <ol className="mb-2 list-decimal pl-4" {...props} />,
+                      li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                      h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-base font-bold mb-2" {...props} />,
+                      code: ({node, inline, ...props}) => 
+                        inline 
+                          ? <code className="bg-slate-100 dark:bg-slate-700 rounded px-1" {...props} />
+                          : <code className="block bg-slate-100 dark:bg-slate-700 rounded p-2 my-2" {...props} />,
+                      pre: ({node, ...props}) => <pre className="bg-slate-100 dark:bg-slate-700 rounded p-2 my-2 overflow-x-auto" {...props} />,
+                      table: ({node, ...props}) => <table className="min-w-full border border-slate-200 dark:border-slate-700 my-2" {...props} />,
+                      th: ({node, ...props}) => <th className="border border-slate-200 dark:border-slate-700 px-4 py-2 bg-slate-50 dark:bg-slate-800" {...props} />,
+                      td: ({node, ...props}) => <td className="border border-slate-200 dark:border-slate-700 px-4 py-2" {...props} />,
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                )}
               </div>
 
               {message.role === "user" && (

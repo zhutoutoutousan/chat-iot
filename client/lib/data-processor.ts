@@ -1,264 +1,280 @@
-import { createReadStream } from 'fs';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
+import { SensorData } from './sensors';
 
-// Type declarations for external packages
-interface XMLParserOptions {
-  ignoreAttributes?: boolean;
-  parseAttributeValue?: boolean;
-  parseTagValue?: boolean;
-  preserveOrder?: boolean;
+interface DataWindow {
+  startTime: Date;
+  endTime: Date;
+  data: SensorData[];
+  aggregationType: 'raw' | 'hourly' | 'daily' | 'weekly' | string;
 }
 
-interface WeaviateClientConfig {
-  host: string;
-  port?: number;
-  headers?: Record<string, string>;
-}
-
-interface WeaviateSchema {
-  class: string;
-  properties: Array<{
-    name: string;
-    dataType: string[];
-  }>;
-  vectorizer: string;
-}
-
-// Simplified type declarations for the required classes
-class XMLParser {
-  constructor(options: XMLParserOptions) {}
-  parse(xml: string): any {}
-}
-
-class WeaviateClient {
-  schema: {
-    classCreator: () => {
-      withClass: (schema: WeaviateSchema) => {
-        do: () => Promise<void>;
-      };
-    };
-  } = {
-    classCreator: () => ({
-      withClass: () => ({
-        do: () => Promise.resolve()
-      })
-    })
+interface DataCache {
+  [key: string]: {
+    window: DataWindow;
+    timestamp: number;
   };
-
-  batch: {
-    objectsBatcher: () => {
-      withObject: (obj: any) => void;
-      do: () => Promise<any>;
-    };
-  } = {
-    objectsBatcher: () => ({
-      withObject: () => {},
-      do: () => Promise.resolve({})
-    })
-  };
-
-  constructor(config: WeaviateClientConfig) {}
-}
-
-class OpenAIEmbeddings {
-  constructor(config: { modelName: string }) {}
-  embedDocuments(texts: string[]): Promise<number[][]> {
-    return Promise.resolve([[]]);
-  }
-}
-
-// Utility function to chunk arrays
-function chunk<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}
-
-// Add type declarations for the document structure
-interface NetworkDocument {
-  mastrNummer?: string;
-  sparte?: string;
-  datumLetzteAktualisierung?: string;
-  networkDetails?: Record<string, any>;
-  content?: string;
-  vector?: number[];
 }
 
 export class DataProcessor {
-  private weaviateClient: WeaviateClient;
-  private xmlParser: XMLParser;
-  private embeddings: OpenAIEmbeddings;
+  private cache: DataCache = {};
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private lastAggregationType: string | null = null;
 
-  constructor() {
-    this.weaviateClient = new WeaviateClient({
-      host: process.env.WEAVIATE_HOST || 'localhost',
-      port: parseInt(process.env.WEAVIATE_PORT || '8080'),
-      headers: { 'X-OpenAI-Api-Key': process.env.OPENAI_API_KEY || '' }
+  /**
+   * Process sensor data with windowing and optional aggregation
+   */
+  processData(
+    data: SensorData[],
+    startTime: Date,
+    endTime: Date,
+    aggregationType: 'raw' | 'hourly' | 'daily' | 'weekly' | string = 'raw'
+  ): SensorData[] {
+    console.log('[DataProcessor] Processing request:', {
+      dataPoints: data.length,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      aggregationType,
+      lastAggregationType: this.lastAggregationType
+    });
+
+    if (!data || data.length === 0) return [];
+
+    // Clear cache if aggregation type changes
+    if (this.lastAggregationType !== null && this.lastAggregationType !== aggregationType) {
+      console.log('[DataProcessor] Aggregation type changed, clearing cache:', {
+        previous: this.lastAggregationType,
+        new: aggregationType,
+        cacheSize: Object.keys(this.cache).length
+      });
+      this.clearCache();
+    }
+    this.lastAggregationType = aggregationType;
+
+    const sensorId = data[0].sensorId;
+    const cacheKey = `${sensorId}_${startTime.toISOString()}_${endTime.toISOString()}_${aggregationType}`;
+    
+    console.log('[DataProcessor] Checking cache:', {
+      sensorId,
+      cacheKey,
+      cacheSize: Object.keys(this.cache).length,
+      hasCacheEntry: !!this.cache[cacheKey]
+    });
+
+    const cachedData = this.getFromCache(cacheKey);
+    if (cachedData) {
+      console.log('[DataProcessor] Using cached data:', {
+        sensorId,
+        dataLength: cachedData.data.length,
+        aggregationType: cachedData.aggregationType,
+        sampleData: cachedData.data.slice(0, 2)
+      });
+      return cachedData.data;
+    }
+
+    console.log('[DataProcessor] Cache miss, processing data');
+    let processedData = this.filterDataByTimeWindow(data, startTime, endTime);
+    console.log('[DataProcessor] Filtered data:', {
+      sensorId,
+      originalCount: data.length,
+      filteredCount: processedData.length
     });
     
-    this.xmlParser = new XMLParser({
-      ignoreAttributes: false,
-      parseAttributeValue: true,
-      parseTagValue: true,
-      preserveOrder: true
+    if (aggregationType !== 'raw') {
+      if (/^\d+[mhd]$/.test(aggregationType)) {
+        // Custom interval aggregation
+        const value = parseInt(aggregationType.slice(0, -1));
+        const unit = aggregationType.slice(-1) as 'm' | 'h' | 'd';
+        console.log('[DataProcessor] Applying custom interval aggregation:', {
+          value,
+          unit,
+          dataPoints: processedData.length
+        });
+        processedData = this.aggregateDataByInterval(processedData, value, unit);
+      } else {
+        // Standard aggregation
+        console.log('[DataProcessor] Applying standard aggregation:', {
+          type: aggregationType,
+          dataPoints: processedData.length
+        });
+        processedData = this.aggregateData(processedData, aggregationType as 'hourly' | 'daily' | 'weekly');
+      }
+    }
+
+    console.log('[DataProcessor] Storing in cache:', {
+      sensorId,
+      cacheKey,
+      dataPoints: processedData.length,
+      sampleData: processedData.slice(0, 2)
     });
 
-    this.embeddings = new OpenAIEmbeddings({
-      modelName: 'text-embedding-3-small'
-    });
-
-    this.initializeSchema();
-  }
-
-  private async initializeSchema() {
-    const schemaConfig = {
-      class: 'NetworkData',
-      properties: [
-        { name: 'mastrNummer', dataType: ['string'] },
-        { name: 'sparte', dataType: ['string'] },
-        { name: 'datumLetzteAktualisierung', dataType: ['date'] },
-        { name: 'networkDetails', dataType: ['text'] },
-        { name: 'content', dataType: ['text'] }
-      ],
-      vectorizer: 'text2vec-openai'
+    this.cache[cacheKey] = {
+      window: {
+        startTime,
+        endTime,
+        data: processedData,
+        aggregationType
+      },
+      timestamp: Date.now()
     };
 
-    try {
-      await this.weaviateClient.schema.classCreator().withClass(schemaConfig).do();
-    } catch (error) {
-      // Schema might already exist, which is fine
-      console.log('Schema initialization completed');
-    }
+    return processedData;
   }
 
-  async processXMLFile(filePath: string, chunkSize: number = 1000) {
-    try {
-      const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
-      let buffer = '';
-      
-      const processChunks = async function* (this: DataProcessor, source: Readable) {
-        for await (const chunk of source) {
-          buffer += chunk;
-          const documents = this.extractDocuments(buffer);
-          
-          if (documents.length >= chunkSize) {
-            yield documents;
-            buffer = '';
-          }
-        }
-        
-        if (buffer) {
-          yield this.extractDocuments(buffer);
-        }
-      };
-
-      const processDocuments = async function* (this: DataProcessor, documents: AsyncIterable<NetworkDocument[]>) {
-        for await (const batch of documents) {
-          const vectorized = await this.vectorizeAndStore(batch);
-          yield vectorized;
-        }
-      };
-
-      await pipeline(
-        fileStream,
-        processChunks.bind(this),
-        processDocuments.bind(this)
-      );
-
-    } catch (error) {
-      console.error('Error processing XML file:', error);
-      throw error;
-    }
+  /**
+   * Filter data by time window
+   */
+  private filterDataByTimeWindow(
+    data: SensorData[],
+    startTime: Date,
+    endTime: Date
+  ): SensorData[] {
+    return data.filter(item => {
+      const itemTime = new Date(item.createdAt);
+      return itemTime >= startTime && itemTime <= endTime;
+    });
   }
 
-  private async vectorizeAndStore(documents: NetworkDocument[]) {
-    const batches = chunk(documents, 100);
-    const results = [];
-    
-    for (const batch of batches) {
-      const vectors = await this.generateEmbeddings(batch);
-      const stored = await this.storeInWeaviate(vectors);
-      results.push(...stored);
-    }
+  /**
+   * Aggregate data based on the specified type
+   */
+  private aggregateData(
+    data: SensorData[],
+    aggregationType: 'hourly' | 'daily' | 'weekly'
+  ): SensorData[] {
+    const aggregatedData: { [key: string]: SensorData } = {};
 
-    return results;
-  }
+    data.forEach(item => {
+      const date = new Date(item.createdAt);
+      let key: string;
+      let timestamp: string;
 
-  private async generateEmbeddings(documents: NetworkDocument[]) {
-    const texts = documents.map(doc => {
-      const content = [
-        doc.mastrNummer,
-        doc.sparte,
-        doc.datumLetzteAktualisierung,
-        JSON.stringify(doc.networkDetails)
-      ].filter(Boolean).join(' ');
-      
-      return { ...doc, content };
+      switch (aggregationType) {
+        case 'hourly':
+          key = date.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+          timestamp = `${key}:00:00.000Z`; // Add minutes, seconds, and milliseconds
+          break;
+        case 'daily':
+          key = date.toISOString().slice(0, 10); // YYYY-MM-DD
+          timestamp = `${key}T12:00:00.000Z`; // Use noon for daily aggregation
+          break;
+        case 'weekly':
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          key = weekStart.toISOString().slice(0, 10);
+          timestamp = `${key}T12:00:00.000Z`; // Use noon for weekly aggregation
+          break;
+      }
+
+      if (!aggregatedData[key]) {
+        // Create a new data point with only necessary properties
+        aggregatedData[key] = {
+          sensorId: item.sensorId,
+          location: item.location,
+          createdAt: timestamp, // Use the properly formatted ISO timestamp
+          value: '0'
+        };
+        (aggregatedData[key] as any).count = 0;
+      }
+
+      const value = parseFloat(item.value);
+      const existingValue = parseFloat(aggregatedData[key].value);
+      const count = (aggregatedData[key] as any).count + 1;
+
+      aggregatedData[key].value = ((existingValue * (count - 1) + value) / count).toString();
+      (aggregatedData[key] as any).count = count;
     });
 
-    const embeddings = await Promise.all(
-      texts.map(async (doc) => {
-        const [vector] = await this.embeddings.embedDocuments([doc.content || '']);
-        return { ...doc, vector };
-      })
+    return Object.values(aggregatedData);
+  }
+
+  /**
+   * Aggregate data by custom interval
+   */
+  private aggregateDataByInterval(
+    data: SensorData[],
+    value: number,
+    unit: 'm' | 'h' | 'd'
+  ): SensorData[] {
+    console.log('[DataProcessor] Starting interval aggregation:', {
+      value,
+      unit,
+      inputDataPoints: data.length
+    });
+
+    const aggregatedData: { [key: string]: SensorData } = {};
+    const intervalMs = value * (
+      unit === 'm' ? 60 * 1000 : // minutes to ms
+      unit === 'h' ? 60 * 60 * 1000 : // hours to ms
+      24 * 60 * 60 * 1000 // days to ms
     );
 
-    return embeddings;
-  }
-
-  private async storeInWeaviate(vectors: NetworkDocument[]) {
-    const batcher = this.weaviateClient.batch.objectsBatcher();
-    
-    vectors.forEach(item => {
-      batcher.withObject({
-        class: 'NetworkData',
-        properties: {
-          mastrNummer: item.mastrNummer,
-          sparte: item.sparte,
-          datumLetzteAktualisierung: item.datumLetzteAktualisierung,
-          networkDetails: item.networkDetails,
-          content: item.content
-        },
-        vector: item.vector
-      });
+    console.log('[DataProcessor] Calculated interval:', {
+      intervalMs,
+      intervalInMinutes: intervalMs / (60 * 1000)
     });
 
-    const result = await batcher.do();
+    data.forEach(item => {
+      const date = new Date(item.createdAt);
+      const intervalStart = new Date(Math.floor(date.getTime() / intervalMs) * intervalMs);
+      const key = intervalStart.toISOString();
+
+      if (!aggregatedData[key]) {
+        aggregatedData[key] = {
+          sensorId: item.sensorId,
+          location: item.location,
+          createdAt: key,
+          value: '0'
+        };
+        (aggregatedData[key] as any).count = 0;
+      }
+
+      const value = parseFloat(item.value);
+      const existingValue = parseFloat(aggregatedData[key].value);
+      const count = (aggregatedData[key] as any).count + 1;
+
+      aggregatedData[key].value = ((existingValue * (count - 1) + value) / count).toString();
+      (aggregatedData[key] as any).count = count;
+    });
+
+    const result = Object.values(aggregatedData).sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    console.log('[DataProcessor] Completed interval aggregation:', {
+      inputDataPoints: data.length,
+      outputDataPoints: result.length,
+      sampleData: result.slice(0, 2)
+    });
+
     return result;
   }
 
-  private extractDocuments(xmlString: string): NetworkDocument[] {
-    try {
-      const parsed = this.xmlParser.parse(xmlString);
-      // Handle the preserved order format
-      const documents = Array.isArray(parsed) ? parsed : [parsed];
-      return documents.map(doc => this.flattenDocument(doc));
-    } catch (error) {
-      console.error('Error parsing XML:', error);
-      return [];
+  /**
+   * Get data from cache if valid
+   */
+  private getFromCache(key: string): DataWindow | null {
+    const cached = this.cache[key];
+    if (!cached) return null;
+
+    const isValid = Date.now() - cached.timestamp < this.CACHE_DURATION;
+    if (!isValid) {
+      delete this.cache[key];
+      return null;
     }
+
+    return cached.window;
   }
 
-  private flattenDocument(doc: any): NetworkDocument {
-    // Convert the preserved order format to a flat object
-    const flat: NetworkDocument = {};
-    
-    const flatten = (obj: any) => {
-      if (Array.isArray(obj)) {
-        obj.forEach(item => {
-          if (item['#text']) {
-            flat[item['#name'] as keyof NetworkDocument] = item['#text'];
-          } else {
-            flatten(item);
-          }
-        });
-      }
-    };
-
-    flatten(doc);
-    return flat;
+  /**
+   * Clear all cache entries
+   */
+  clearCache(): void {
+    const cacheSize = Object.keys(this.cache).length;
+    console.log('[DataProcessor] Clearing cache:', {
+      previousSize: cacheSize,
+      cacheKeys: Object.keys(this.cache)
+    });
+    this.cache = {};
   }
-} 
+}
+
+export const dataProcessor = new DataProcessor(); 
