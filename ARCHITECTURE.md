@@ -9,6 +9,7 @@ MhatIoT is a modern IoT data analytics platform that provides a Google-like inte
 ### High-Level Overview
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'fontSize': '16px', 'textColor': '#000000' }}}%%
 graph TB
     UI[Web Interface] --> API[API Layer]
     API --> DP[Data Processing]
@@ -37,10 +38,13 @@ graph TB
         Agents
     end
 
-    style UI fill:#f9f,stroke:#333,stroke-width:2px
-    style API fill:#bbf,stroke:#333,stroke-width:2px
-    style DP fill:#dfd,stroke:#333,stroke-width:2px
-    style AO fill:#ffd,stroke:#333,stroke-width:2px
+    style UI fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style API fill:#bbf,stroke:#333,stroke-width:2px,color:#000
+    style DP fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    style AO fill:#ffd,stroke:#333,stroke-width:2px,color:#000
+    style VDB fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style XML fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Agents fill:#fff,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Component Details
@@ -50,6 +54,7 @@ graph TB
 The frontend is built with Next.js and follows Google's search interface design principles:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'fontSize': '16px', 'textColor': '#000000' }}}%%
 graph TD
     subgraph "User Interface Components"
         MI[Main Interface] --> |Centered Layout| SB[Search Bar]
@@ -63,10 +68,14 @@ graph TD
         CR --> |Conditional| LD[Loading State]
     end
 
-    style MI fill:#f9f,stroke:#333,stroke-width:2px
-    style SB fill:#bbf,stroke:#333,stroke-width:2px
-    style CB fill:#dfd,stroke:#333,stroke-width:2px
-    style CR fill:#ffd,stroke:#333,stroke-width:2px
+    style MI fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style SB fill:#bbf,stroke:#333,stroke-width:2px,color:#000
+    style CB fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    style CR fill:#ffd,stroke:#333,stroke-width:2px,color:#000
+    style SI fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style SD fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style MSG fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style LD fill:#fff,stroke:#333,stroke-width:2px,color:#000
 ```
 
 Key Features:
@@ -79,6 +88,7 @@ Key Features:
 ### 2. Data Processing Pipeline
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'fontSize': '16px', 'textColor': '#000000' }}}%%
 flowchart LR
     XML[XML Files] --> Parser[XML Parser]
     Parser --> Stream[Stream Processing]
@@ -95,11 +105,11 @@ flowchart LR
         Store
     end
 
-    style XML fill:#f9f,stroke:#333,stroke-width:2px
-    style Parser fill:#bbf,stroke:#333,stroke-width:2px
-    style Stream fill:#dfd,stroke:#333,stroke-width:2px
-    style Embed fill:#ffd,stroke:#333,stroke-width:2px
-    style Store fill:#fdf,stroke:#333,stroke-width:2px
+    style XML fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style Parser fill:#bbf,stroke:#333,stroke-width:2px,color:#000
+    style Stream fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    style Embed fill:#ffd,stroke:#333,stroke-width:2px,color:#000
+    style Store fill:#fdf,stroke:#333,stroke-width:2px,color:#000
 ```
 
 Components:
@@ -111,6 +121,7 @@ Components:
 ### 3. Agent Orchestration
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'fontSize': '16px', 'textColor': '#000000' }}}%%
 graph TB
     User[User Query] --> Orchestrator[Agent Orchestrator]
     Orchestrator --> DataAgent[Data Analysis Agent]
@@ -123,11 +134,13 @@ graph TB
     
     Results --> Response[User Response]
 
-    style User fill:#f9f,stroke:#333,stroke-width:2px
-    style Orchestrator fill:#bbf,stroke:#333,stroke-width:2px
-    style DataAgent fill:#dfd,stroke:#333,stroke-width:2px
-    style SearchAgent fill:#ffd,stroke:#333,stroke-width:2px
-    style VisAgent fill:#fdf,stroke:#333,stroke-width:2px
+    style User fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style Orchestrator fill:#bbf,stroke:#333,stroke-width:2px,color:#000
+    style DataAgent fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    style SearchAgent fill:#ffd,stroke:#333,stroke-width:2px,color:#000
+    style VisAgent fill:#fdf,stroke:#333,stroke-width:2px,color:#000
+    style Results fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Response fill:#fff,stroke:#333,stroke-width:2px,color:#000
 ```
 
 Features:
@@ -158,6 +171,7 @@ Features:
 ### Technology Stack
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'fontFamily': 'arial', 'fontSize': '16px', 'textColor': '#000000' }}}%%
 graph TB
     subgraph "Frontend"
         Next[Next.js] --> React[React]
@@ -176,9 +190,17 @@ graph TB
         Stream --> Vector[Vector Database]
     end
 
-    style Next fill:#f9f,stroke:#333,stroke-width:2px
-    style Node fill:#bbf,stroke:#333,stroke-width:2px
-    style XML fill:#dfd,stroke:#333,stroke-width:2px
+    style Next fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style React fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Tailwind fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style ShadcnUI fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Node fill:#bbf,stroke:#333,stroke-width:2px,color:#000
+    style LangGraph fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style OpenAI fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Weaviate fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style XML fill:#dfd,stroke:#333,stroke-width:2px,color:#000
+    style Stream fill:#fff,stroke:#333,stroke-width:2px,color:#000
+    style Vector fill:#fff,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Error Handling and Reliability
