@@ -7,10 +7,19 @@ import { ChatInterface } from "@/components/chat-interface"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Send, Bot, Search } from "lucide-react"
+import SensorVisualization  from "@/components/sensor-visualization"
+
+interface SensorData {
+  location: [number, number];
+  createdAt: string;
+  value: string;
+}
 
 export default function IoTChatDashboard() {
   const [isSensorChecking, setIsSensorChecking] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [sensorData, setSensorData] = useState<SensorData[]>([])
+  const [isLoadingSensorData, setIsLoadingSensorData] = useState(false)
 
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     api: "/api/chat",
@@ -20,16 +29,20 @@ export default function IoTChatDashboard() {
     }
   })
 
-  const handleSensorCheck = () => {
+  const handleSensorCheck = async () => {
     setIsSensorChecking(true)
-    const inputEvent = { target: { value: "Check the status of all connected sensors and report any issues." } } as React.ChangeEvent<HTMLInputElement>
-    const submitEvent = { preventDefault: () => {} } as React.FormEvent<HTMLFormElement>
-    
-    handleInputChange(inputEvent)
-    setTimeout(() => {
-      handleSubmit(submitEvent)
-      setTimeout(() => setIsSensorChecking(false), 2000)
-    }, 100)
+    setIsLoadingSensorData(true)
+    try {
+      const response = await fetch('https://api.opensensemap.org/boxes/67f90bb3806ae700072ac06d/data/67ff9614bd73080008fa6dc9?format=json&from-date=2025-04-11T12:00:00Z&to-date=2025-04-17T15:59:59Z');
+      const data = await response.json();
+      setSensorData(data);
+      setIsExpanded(true);
+    } catch (error) {
+      console.error('Error fetching sensor data:', error);
+    } finally {
+      setIsLoadingSensorData(false);
+      setIsSensorChecking(false);
+    }
   }
 
   const handleFocus = () => {
@@ -44,7 +57,7 @@ export default function IoTChatDashboard() {
           <div className={`flex items-center gap-3 mb-8 ${isExpanded ? 'transform -translate-y-20' : ''} transition-all duration-300`}>
             <Bot className="w-12 h-12 text-blue-500" />
             <h1 className="text-3xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
-              IoTr
+              MhatIoT
             </h1>
           </div>
 
@@ -106,10 +119,11 @@ export default function IoTChatDashboard() {
             </div>
           </div>
 
-          {/* Messages Area */}
-          {(messages.length > 0 || isLoading) && (
-            <div className={`w-full max-w-[800px] px-6 mt-8 transition-all duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
+          {/* Content Area */}
+          <div className={`w-full max-w-[800px] px-6 mt-8 transition-all duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0'}`}>
+            {/* Messages Area */}
+            {(messages.length > 0 || isLoading) && (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-6">
                 <ChatInterface
                   messages={messages}
                   input={input}
@@ -119,8 +133,18 @@ export default function IoTChatDashboard() {
                   selectedDataSource="all-sensors"
                 />
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Sensor Visualization Area */}
+            {(sensorData.length > 0 || isLoadingSensorData) && (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
+                <SensorVisualization
+                  data={sensorData}
+                  isLoading={isLoadingSensorData}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </SidebarProvider>
