@@ -1,81 +1,195 @@
-import { streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { Message } from 'ai';
+import { createChatCompletion } from '@/lib/deepseek';
+import { dataProcessor } from '@/lib/data-processor';
+import { fetchAllSensorData, fetchSenseBoxInfo, getTimeRange, SensorConfig, SensorDataGroup } from '@/lib/sensors';
 
-export const maxDuration = 30
+export const runtime = 'edge';
+
+interface ProcessedDataGroup {
+  [sensorId: string]: any[];
+}
 
 export async function POST(req: Request) {
-  const { messages, dataSource, agent } = await req.json()
+  const body = await req.json();
+  console.log('Received body:', body);
+  const messages = body.messages || [];
+  const dataSource = (body.dataSource ?? body.body?.dataSource) || 'all-sensors';
+  const timeSpan = (body.timeSpan ?? body.body?.timeSpan) || '7d';
+  const agent = (body.agent ?? body.body?.agent) || 'data-analyst';
+  const senseBoxId = body.senseBoxId ?? body.body?.senseBoxId;
 
-  // Define agent personalities and capabilities
-  const agentPrompts = {
-    "data-analyst": `You are a Data Analyst AI specializing in IoT sensor data analysis. You excel at:
-    - Identifying trends and patterns in time-series data
-    - Statistical analysis and correlation detection
-    - Creating data summaries and reports
-    - Explaining complex data insights in simple terms`,
-
-    "anomaly-detector": `You are an Anomaly Detection AI focused on identifying unusual patterns in IoT data. You specialize in:
-    - Detecting outliers and abnormal sensor readings
-    - Identifying potential equipment failures
-    - Flagging security concerns or data integrity issues
-    - Providing early warning alerts`,
-
-    "maintenance-advisor": `You are a Predictive Maintenance AI that helps optimize equipment lifecycle. You focus on:
-    - Predicting when equipment needs maintenance
-    - Analyzing wear patterns and degradation
-    - Optimizing maintenance schedules
-    - Reducing downtime and costs`,
-
-    "ai-researcher": `You are an Advanced AI Researcher specializing in machine learning analysis of IoT data. You provide:
-    - Deep learning insights and predictions
-    - Complex pattern recognition
-    - Advanced statistical modeling
-    - Research-level analysis and recommendations`,
+  // Get the last message content
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage) {
+    return new Response(
+      JSON.stringify({ error: 'No message provided' }),
+      { status: 400 }
+    );
   }
 
-  // Simulate data context based on selected data source
-  const dataContexts = {
-    "temperature-sensors":
-      "Temperature sensor network with 24 devices across 3 buildings, measuring ambient and equipment temperatures every 30 seconds.",
-    "humidity-sensors":
-      "Humidity monitoring system with 18 sensors in climate-controlled environments, tracking moisture levels for optimal conditions.",
-    "power-meters":
-      "Smart power meters monitoring electrical consumption across facilities, with real-time usage and efficiency metrics.",
-    "air-quality":
-      "Air quality monitoring network measuring PM2.5, CO2, VOCs, and other pollutants in indoor and outdoor environments.",
-    "vibration-sensors":
-      "Industrial vibration sensors on rotating equipment, monitoring for mechanical issues and performance optimization.",
+  const userQuery = lastMessage.content;
+
+  try {
+    // If no senseBox is selected, provide a general response
+    if (!senseBoxId) {
+      const contextMessage: Message = {
+        role: 'system',
+        content: `You are an IoT sensor data analyst assistant. Currently, no sensor box is selected. 
+        Guide the user to:
+        1. Enter a senseBox ID in the input field
+        2. Click the "Check Sensors" button to load sensor data
+        3. Once data is loaded, you can help analyze the sensor readings
+
+        Respond to the user's query with this context in mind.`,
+        id: 'context'
+      };
+
+      const augmentedMessages = [contextMessage, ...messages];
+      const response = await createChatCompletion(augmentedMessages);
+
+      return new Response(
+        JSON.stringify({ 
+          role: 'assistant', 
+          content: response,
+          id: `assistant-${Date.now()}`
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse time span and get appropriate time range
+    const days = parseInt(timeSpan?.replace('d', '') || '7');
+    console.log('Processing time span:', { timeSpan, days });
+    const timeRange = getTimeRange(days);
+    
+    const boxInfo = await fetchSenseBoxInfo(senseBoxId);
+    console.log('Fetching data with time range:', { timeSpan, days, timeRange });
+    const rawData = await fetchAllSensorData(senseBoxId, boxInfo.sensors, timeRange);
+
+    // Process data with appropriate aggregation based on time range
+    const aggregationType = determineAggregationType(timeRange);
+    const processedData: ProcessedDataGroup = {};
+    
+    // If dataSource is a specific sensor ID, only process that sensor's data
+    const targetSensors = dataSource === 'all-sensors' 
+      ? boxInfo.sensors 
+      : boxInfo.sensors.filter(s => s.id === dataSource);
+
+    for (const sensor of targetSensors) {
+      const sensorData = rawData[sensor.id];
+      if (sensorData) {
+        processedData[sensor.id] = dataProcessor.processData(
+          sensorData,
+          new Date(timeRange.fromDate),
+          new Date(timeRange.toDate),
+          aggregationType
+        );
+      }
+    }
+
+    // Prepare context for the AI
+    const dataContext = prepareDataContext(processedData, boxInfo, timeRange, dataSource);
+    
+    // Add context to the messages
+    const contextMessage: Message = {
+      role: 'system',
+      content: `You are analyzing IoT sensor data with the following context:\n${dataContext}\n\nRespond to the user's query about this data. ${
+        dataSource !== 'all-sensors' 
+          ? `Focus specifically on the ${boxInfo.sensors.find(s => s.id === dataSource)?.name} sensor.`
+          : ''
+      }`,
+      id: 'context'
+    };
+
+    const augmentedMessages = [contextMessage, ...messages];
+
+    // Get streaming response from AI
+    const response = await createChatCompletion(augmentedMessages);
+
+    // Return response
+    return new Response(
+      JSON.stringify({ 
+        role: 'assistant', 
+        content: response,
+        id: `assistant-${Date.now()}`
+      }),
+      { 
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    console.error('Error in chat route:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to process chat request' }),
+      { status: 500 }
+    );
   }
-
-  const systemPrompt = `${agentPrompts[agent as keyof typeof agentPrompts]}
-
-Current Data Context: ${dataContexts[dataSource as keyof typeof dataContexts]}
-
-When responding:
-1. Provide clear, actionable insights
-2. Use specific data points and metrics when possible
-3. If creating visualizations, wrap the data in [VISUALIZATION] tags with JSON format
-4. Always consider the business impact of your analysis
-5. Be conversational but professional
-
-For visualizations, use this format:
-[VISUALIZATION]
-{
-  "type": "chart|metric|alert",
-  "title": "Visualization Title",
-  "value": 123,
-  "trend": "up|down|stable",
-  "status": "normal|warning|critical",
-  "chartData": [...],
-  "insights": ["insight 1", "insight 2"]
 }
-[/VISUALIZATION]`
 
-  const result = streamText({
-    model: openai("gpt-4o"),
-    system: systemPrompt,
-    messages,
-  })
+function determineAggregationType(timeRange: { fromDate: string; toDate: string }): 'raw' | 'hourly' | 'daily' {
+  const start = new Date(timeRange.fromDate);
+  const end = new Date(timeRange.toDate);
+  const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
 
-  return result.toDataStreamResponse()
+  // Enforce 30-day limit
+  if (daysDiff > 30) {
+    console.warn('Time range exceeding 30 days is not supported. Limiting to 30 days.');
+    return 'daily';
+  }
+
+  if (daysDiff <= 1) return 'raw';
+  if (daysDiff <= 7) return 'hourly';
+  return 'daily';
+}
+
+function prepareDataContext(
+  processedData: ProcessedDataGroup,
+  boxInfo: { name: string; location: [number, number]; sensors: SensorConfig[] },
+  timeRange: { fromDate: string; toDate: string },
+  dataSource: string
+): string {
+  const relevantSensors = dataSource === 'all-sensors'
+    ? boxInfo.sensors
+    : boxInfo.sensors.filter(s => s.id === dataSource);
+
+  const sensorSummaries = relevantSensors.map(sensor => {
+    const sensorData = processedData[sensor.id] || [];
+    const latestValue = sensorData[sensorData.length - 1]?.value;
+    const avgValue = calculateAverage(sensorData);
+    const minValue = calculateMin(sensorData);
+    const maxValue = calculateMax(sensorData);
+
+    return `${sensor.name} (${sensor.unit}):
+    - Latest: ${latestValue}
+    - Average: ${avgValue}
+    - Minimum: ${minValue}
+    - Maximum: ${maxValue}
+    - Data points: ${sensorData.length}`;
+  }).join('\n\n');
+
+  return `Box: ${boxInfo.name}
+Location: ${boxInfo.location.join(', ')}
+Time range: ${timeRange.fromDate} to ${timeRange.toDate}
+${dataSource === 'all-sensors' ? 'Analyzing all sensors' : `Focusing on ${relevantSensors[0]?.name} sensor`}
+
+Sensor Summaries:
+${sensorSummaries}`;
+}
+
+function calculateAverage(data: any[]): string {
+  if (!data || data.length === 0) return 'N/A';
+  const sum = data.reduce((acc, item) => acc + parseFloat(item.value), 0);
+  return (sum / data.length).toFixed(2);
+}
+
+function calculateMin(data: any[]): string {
+  if (!data || data.length === 0) return 'N/A';
+  const min = Math.min(...data.map(item => parseFloat(item.value)));
+  return min.toFixed(2);
+}
+
+function calculateMax(data: any[]): string {
+  if (!data || data.length === 0) return 'N/A';
+  const max = Math.max(...data.map(item => parseFloat(item.value)));
+  return max.toFixed(2);
 }
