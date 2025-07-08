@@ -1,0 +1,53 @@
+# Fine-tuning Configuration
+
+data:
+  input_dir: "/data"  # Directory containing XML files
+  output_dir: "/data_ai/output"  # Directory for processed data and checkpoints
+  schema_path: "/data_schema/AnlagenEegBiomasse.xsd"  # Path to XML schema
+  target_elements:  # XML elements to extract
+    - "Anlage"
+    - "Standort"
+    - "Betreiber"
+    - "Technische_Daten"
+
+processing:
+  enabled: true  # Whether to run data processing
+  chunk_size: 10000  # Number of elements to process in each chunk
+  save_chunk_size: 50000  # Number of elements before saving to disk
+  num_workers: 8  # Number of parallel workers for processing
+  max_ram_usage: "80%"  # Maximum RAM usage threshold
+
+model:
+  base_model: "lmsys/vicuna-13b-v1.5"  # Base model to fine-tune
+  max_sequence_length: 512  # Maximum sequence length for inputs
+  embedding_dim: 1024  # Embedding dimension
+
+training:
+  device: "cuda"  # Training device (cuda/cpu)
+  batch_size: 4  # Training batch size
+  learning_rate: 1e-5  # Learning rate
+  num_epochs: 3  # Number of training epochs
+  warmup_steps: 100  # Number of warmup steps
+  gradient_accumulation_steps: 4  # Number of steps for gradient accumulation
+  dataloader_workers: 4  # Number of dataloader workers
+  mixed_precision: true  # Whether to use mixed precision training
+  gradient_checkpointing: true  # Whether to use gradient checkpointing
+  save_steps: 1000  # Save checkpoint every N steps
+  eval_steps: 500  # Run evaluation every N steps
+
+mlflow:
+  tracking_uri: "file:///data_ai/mlruns"  # MLflow tracking URI
+  experiment_name: "energy_llm_finetuning"  # MLflow experiment name
+
+distributed:
+  enabled: false  # Whether to use distributed training
+  backend: "nccl"  # Distributed backend
+  world_size: 1  # Number of GPUs to use
+  master_addr: "localhost"  # Master node address
+  master_port: "12355"  # Master node port
+
+monitoring:
+  log_level: "INFO"  # Logging level
+  memory_monitoring: true  # Whether to monitor memory usage
+  gpu_monitoring: true  # Whether to monitor GPU usage
+  profile_execution: false  # Whether to profile execution time 
