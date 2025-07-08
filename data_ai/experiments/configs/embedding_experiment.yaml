@@ -1,0 +1,49 @@
+model:
+  base_model: all-roberta-large-v1
+  embedding_dim: 1024
+  domain_adaptation: true
+  dropout: 0.1
+
+vector_db:
+  host: localhost
+  port: 19530
+  collection_name: energy_vectors
+  index_type: IVF_FLAT
+  nlist: 1024
+  nprobe: 16
+  metric_type: L2
+
+data:
+  chunk_size: 500
+  overlap: 20
+  supported_languages:
+    - en
+    - de
+  batch_size: 32
+
+training:
+  learning_rate: 1e-5
+  epochs: 10
+  early_stopping_patience: 3
+  validation_split: 0.2
+  optimizer: AdamW
+  weight_decay: 0.01
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+  top_k_values:
+    - 1
+    - 5
+    - 10
+
+logging:
+  mlflow:
+    tracking_uri: ./mlruns
+    experiment_name: energy_domain_embeddings
+  log_interval: 100
+  save_model: true
+  save_dir: ./experiments/results 
