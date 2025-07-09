@@ -1,3 +1,6 @@
 data
 data_schema
 build
+outputs
+**/__pycache__
+*.egg-info

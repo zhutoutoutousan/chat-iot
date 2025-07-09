@@ -23,6 +23,9 @@ from ..models.evaluation import LLMEvaluator
 
 logger = logging.getLogger(__name__)
 
+# Get project root directory
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.absolute()
+
 class EnergyDataset(Dataset):
     """Dataset for energy domain text data"""
     
@@ -89,10 +92,15 @@ class FineTuningPipeline:
         """
         self.config = config
         
-        # Setup paths
-        self.data_dir = Path(config.data.input_dir)
-        self.output_dir = Path(config.data.output_dir)
-        self.schema_path = Path(config.data.schema_path)
+        # Setup paths with project root
+        self.data_dir = PROJECT_ROOT / Path(config.data.input_dir)
+        self.output_dir = PROJECT_ROOT / Path(config.data.output_dir)
+        self.schema_path = PROJECT_ROOT / Path(config.data.schema_path)
+        
+        # Create directories if they don't exist
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.schema_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Initialize components
         self.xml_processor = XMLStreamProcessor(
