@@ -1,0 +1,7 @@
+loguru>=0.7.2
+pymilvus>=2.3.3
+python-dotenv>=1.0.0
+lxml>=4.9.3
+numpy>=1.24.0
+tqdm>=4.66.1
+sentence-transformers>=2.2.2 

@@ -4,3 +4,6 @@ build
 outputs
 **/__pycache__
 *.egg-info
+volumes
+**/venv
+**/.env
