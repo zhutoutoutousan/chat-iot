@@ -1,9 +1,9 @@
 # Fine-tuning Configuration
 
 data:
-  input_dir: "/data"  # Directory containing XML files
-  output_dir: "/data_ai/output"  # Directory for processed data and checkpoints
-  schema_path: "/data_schema/AnlagenEegBiomasse.xsd"  # Path to XML schema
+  input_dir: "data"  # Directory containing XML files
+  output_dir: "output"  # Directory for processed data and checkpoints
+  schema_path: "data_schema/AnlagenEegBiomasse.xsd"  # Path to XML schema
   target_elements:  # XML elements to extract
     - "Anlage"
     - "Standort"
@@ -36,7 +36,7 @@ training:
   eval_steps: 500  # Run evaluation every N steps
 
 mlflow:
-  tracking_uri: "file:///data_ai/mlruns"  # MLflow tracking URI
+  tracking_uri: "file://mlruns"  # MLflow tracking URI
   experiment_name: "energy_llm_finetuning"  # MLflow experiment name
 
 distributed:
